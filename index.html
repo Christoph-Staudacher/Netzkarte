@@ -11,7 +11,7 @@
     height: 100%;
     margin: 0;
     padding: 0;
-  }#map { height: 100vh; width: 100%; }
+    #map { height: 85vh; width: 100%; }
     #filter, #tools {
       padding: 10px;
       background: white;
@@ -101,41 +101,31 @@
 
   async function fetchDaten() {
     document.getElementById('loader').style.display = 'block';
-    let allRecords = [];
-    let offset = "";
-    let url = "";
-
+    let records = [];
+    let offset = null;
     do {
-      url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view`;
-      if (offset) url += `&offset=${offset}`;
-
-      const res = await fetch(url, {
+      const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view${offset ? `&offset=${offset}` : ''}`, {
         headers: {
           Authorization: `Bearer ${apiKey}`
         }
       });
-
       const data = await res.json();
-      offset = data.offset || null;
-
-      const records = data.records.map(rec => {
-        const f = rec.fields;
-        return {
-          id: rec.id,
-          plz: f.PLZ,
-          netztyp: (f["Netzform Karte"] && f["Netzform Karte"].trim() !== "") ? f["Netzform Karte"].trim() : "Unbekannt",
-          ordernummer: f.Ordernummer || "-",
-          nb: f.NB || "-",
-          lat: f.LAT,
-          lng: f.LONG
-        };
-      }).filter(p => p.lat && p.lng);
-
-      allRecords.push(...records);
+      records = records.concat(data.records);
+      offset = data.offset;
     } while (offset);
-
     document.getElementById('loader').style.display = 'none';
-    return allRecords;
+    return records.map(rec => {
+      const f = rec.fields;
+      return {
+        id: rec.id,
+        plz: f.PLZ,
+        netztyp: (f["Netzform Karte"] && f["Netzform Karte"].trim() !== "") ? f["Netzform Karte"].trim() : "Unbekannt",
+        ordernummer: f.Ordernummer || "-",
+        nb: f.NB || "-",
+        lat: f.LAT,
+        lng: f.LONG
+      };
+    }).filter(p => p.lat && p.lng);
   }
 
   function createPopupContent(daten, marker) {
@@ -212,6 +202,7 @@
 
   async function initialisiereKarte() {
     datenArray = await fetchDaten();
+    console.log("Geladene Daten:", datenArray);
     if (markerCluster) map.removeLayer(markerCluster);
 
     markerCluster = L.markerClusterGroup({
@@ -261,19 +252,25 @@
   });
 
   function exportCSV() {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "PLZ,Ordernummer,Netzbetreiber,Lat,Lon\n" 
-      + datenArray.map(e => `${e.plz},${e.ordernummer},${e.nb},${e.lat},${e.lng}`).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'netztyp_export.csv');
-    link.click();
+    let csv = "PLZ,Ordernummer,Netzbetreiber,Netzform\n";
+    datenArray.forEach(d => {
+      if (aktuelleFilter.has(d.netztyp)) {
+        csv += `${d.plz},${d.ordernummer},${d.nb},${d.netztyp}\n`;
+      }
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'netzkarte_export.csv';
+    a.click();
   }
 
   initialisiereKarte();
+  setInterval(() => {
+    initialisiereKarte();
+  }, 120000);
 </script>
-
 </body>
 </html>
+
