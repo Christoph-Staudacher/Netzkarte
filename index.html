@@ -123,7 +123,7 @@
         return {
           id: rec.id,
           plz: f.PLZ,
-          netztyp: f["Netzform Karte"] || "Unbekannt",
+          netztyp: (f["Netzform Karte"] && f["Netzform Karte"].trim() !== "") ? f["Netzform Karte"].trim() : "Unbekannt",
           ordernummer: f.Ordernummer || "-",
           nb: f.NB || "-",
           lat: f.LAT,
