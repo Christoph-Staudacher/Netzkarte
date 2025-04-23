@@ -2,61 +2,51 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Netzformkarte</title>
+  <title>Netztyp-Karte</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
   <style>
-  html, body {
+    html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-  }
-
-  #map {
-    height: 100vh;
-    width: 100%;
-  }
-
-  #filter, #tools {
-    padding: 10px;
-    background: white;
-    box-shadow: 0 0 10px rgba(0,0,0,0.2);
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 1000;
-  }
-
-  #tools {
-    top: auto;
-    bottom: 10px;
-  }
-
-  #legend {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    background: white;
-    padding: 10px;
-    font-size: 14px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.2);
-    z-index: 1000;
-  }
-
-  #loader {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(255,255,255,0.9);
-    padding: 20px;
-    border-radius: 8px;
-    display: none;
-    z-index: 2000;
-  }
-</style>
-
+  }#map { height: 100vh; width: 100%; }
+    #filter, #tools {
+      padding: 10px;
+      background: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+    #tools {
+      top: auto;
+      bottom: 10px;
+    }
+    #legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      font-size: 14px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.9);
+      padding: 20px;
+      border-radius: 8px;
+      display: none;
+      z-index: 2000;
+    }
+  </style>
 </head>
 <body>
 
@@ -111,25 +101,41 @@
 
   async function fetchDaten() {
     document.getElementById('loader').style.display = 'block';
-    const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`
-      }
-    });
-    const data = await res.json();
+    let allRecords = [];
+    let offset = "";
+    let url = "";
+
+    do {
+      url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view`;
+      if (offset) url += `&offset=${offset}`;
+
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`
+        }
+      });
+
+      const data = await res.json();
+      offset = data.offset || null;
+
+      const records = data.records.map(rec => {
+        const f = rec.fields;
+        return {
+          id: rec.id,
+          plz: f.PLZ,
+          netztyp: f["Netzform Karte"] || "Unbekannt",
+          ordernummer: f.Ordernummer || "-",
+          nb: f.NB || "-",
+          lat: f.LAT,
+          lng: f.LONG
+        };
+      }).filter(p => p.lat && p.lng);
+
+      allRecords.push(...records);
+    } while (offset);
+
     document.getElementById('loader').style.display = 'none';
-    return data.records.map(rec => {
-      const f = rec.fields;
-      return {
-        id: rec.id,
-        plz: f.PLZ,
-        netztyp: f["Netzform Karte"] || "Unbekannt",
-        ordernummer: f.Ordernummer || "-",
-        nb: f.NB || "-",
-        lat: f.LAT,
-        lng: f.LONG
-      };
-    }).filter(p => p.lat && p.lng);
+    return allRecords;
   }
 
   function createPopupContent(daten, marker) {
@@ -255,24 +261,19 @@
   });
 
   function exportCSV() {
-    let csv = "PLZ,Ordernummer,Netzbetreiber,Netzform\n";
-    datenArray.forEach(d => {
-      if (aktuelleFilter.has(d.netztyp)) {
-        csv += `${d.plz},${d.ordernummer},${d.nb},${d.netztyp}\n`;
-      }
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'netzkarte_export.csv';
-    a.click();
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "PLZ,Ordernummer,Netzbetreiber,Lat,Lon\n" 
+      + datenArray.map(e => `${e.plz},${e.ordernummer},${e.nb},${e.lat},${e.lng}`).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'netztyp_export.csv');
+    link.click();
   }
 
   initialisiereKarte();
-  setInterval(() => {
-    initialisiereKarte();
-  }, 120000);
 </script>
+
 </body>
 </html>
