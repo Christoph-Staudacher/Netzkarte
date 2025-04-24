@@ -147,10 +147,9 @@
       });
       const relevant = tt + tn;
       const anteil = relevant ? (tt / relevant) : 0;
-      if (anteil === 0) return "green";
-      if (anteil < redThresh && anteil >= orangeThresh) return "orange";
       if (anteil >= redThresh) return "red";
-      return "gray";
+      if (anteil >= orangeThresh) return "orange";
+      return "green";
     }
 
     async function initialisiereKarte() {
@@ -170,7 +169,7 @@
               const childMarkers = cluster.getAllChildMarkers();
               const color = getClusterColor(childMarkers);
               return L.divIcon({
-                html: `<div style="background-color:${color}; border-radius:50%; padding:5px 10px; color:white;">\${count}</div>`,
+                html: `<div style="background-color:${color}; border-radius:50%; padding:5px 10px; color:white;">${count}</div>`,
                 className: 'custom-cluster',
                 iconSize: L.point(40, 40)
               });
@@ -227,9 +226,9 @@
     function createPopupContent(daten, marker) {
       const popup = document.createElement('div');
       popup.innerHTML = `
-        <strong>PLZ: \${daten.plz}</strong><br>
-        Ordernummer: \${daten.ordernummer}<br>
-        Netzbetreiber: \${daten.nb}<br>
+        <strong>PLZ: ${daten.plz}</strong><br>
+        Ordernummer: ${daten.ordernummer}<br>
+        Netzbetreiber: ${daten.nb}<br>
         <label>Netzform:
           <select>
             <option value="TT">TT-Netz</option>
@@ -237,7 +236,7 @@
             <option value="Unbekannt">Nicht vergeben</option>
           </select>
         </label><br>
-        <label>Kommentar:<br><textarea rows="2" data-id="\${daten.id}"></textarea></label>
+        <label>Kommentar:<br><textarea rows="2" data-id="${daten.id}"></textarea></label>
       `;
       const select = popup.querySelector('select');
       select.value = daten.netztyp;
