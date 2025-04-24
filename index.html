@@ -7,11 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
   <style>
-    html, body {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-   #map { height: 100vh; width: 100%; }
+    #map { height: 85vh; width: 100%; }
     #filter, #tools {
       padding: 10px;
       background: white;
@@ -66,7 +62,7 @@
 </div>
 
 <div id="tools">
-  <button onclick="initialisiereKarte()">🔄 Karte aktualisieren</button>
+  <button onclick="filterMarker()">🔄 Karte aktualisieren</button>
   <input type="text" id="orderSearch" placeholder="Ordernummer suchen">
   <button onclick="exportCSV()">📁 CSV Export</button><br>
   <div id="clusterControl">
@@ -90,7 +86,6 @@
 <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 <script>
   const map = L.map('map').setView([51.1657, 10.4515], 6);
-
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap-Mitwirkende'
   }).addTo(map);
@@ -103,7 +98,6 @@
 
   const aktuelleFilter = new Set(["TT", "TN", "Unbekannt"]);
   let clusteringAktiv = true;
-
   const baseId = "appGh6rEXtCNMCrWh";
   const tableName = "Zusammenfassung Angaben Craft OS";
   const apiKey = "patlyiYzU6HAMUiY9.7cfef1ea6fc2a5cd9cc3acebf1347fd04ba1e1d7dd60e9acc7bb77c0caa72f78";
@@ -117,7 +111,7 @@
     let records = [];
     let offset = null;
     do {
-      const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view${offset ? `&offset=${offset}` : ''}`, {
+      const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view&fields[]=PLZ&fields[]=LAT&fields[]=LONG&fields[]=Netzform%20Karte&fields[]=Ordernummer&fields[]=NB${offset ? `&offset=${offset}` : ''}`, {
         headers: { Authorization: `Bearer ${apiKey}` }
       });
       const data = await res.json();
@@ -149,13 +143,18 @@
     });
     const relevant = tt + tn;
     const anteil = relevant ? (tt / relevant) : 0;
-   if (anteil >= redThresh) return "red";
-if (anteil >= orangeThresh) return "orange";
-return "green";
+    if (anteil === 0) return "green";
+    if (anteil < redThresh && anteil >= orangeThresh) return "orange";
+    if (anteil >= redThresh) return "red";
+    return "gray";
   }
 
   async function initialisiereKarte() {
     datenArray = await fetchDaten();
+    renderMarker();
+  }
+
+  function renderMarker() {
     if (markerCluster) map.removeLayer(markerCluster);
     allMarker.forEach(m => map.removeLayer(m));
     allMarker = [];
@@ -167,17 +166,15 @@ return "green";
             const childMarkers = cluster.getAllChildMarkers();
             const color = getClusterColor(childMarkers);
             return L.divIcon({
-              html: `<div style="background-color:${color}; border-radius:50%; padding:5px 10px; color:white;">
-                        ${count}
-                        <div style='font-size:10px;'>TT: ${childMarkers.filter(m => m.options.netztyp === "TT").length}<br>TN: ${childMarkers.filter(m => m.options.netztyp === "TN").length}</div>
-                    </div>`,
+              html: `<div style="background-color:${color}; border-radius:50%; padding:5px 10px; color:white;">${count}</div>`,
               className: 'custom-cluster',
-              iconSize: L.point(60, 60)
+              iconSize: L.point(40, 40)
             });
           }
         }) : L.layerGroup();
 
     datenArray.forEach(daten => {
+      if (!aktuelleFilter.has(daten.netztyp)) return;
       const color = farben[daten.netztyp] || "gray";
       const marker = L.circleMarker([daten.lat, daten.lng], {
         radius: 8,
@@ -195,19 +192,23 @@ return "green";
     map.addLayer(markerCluster);
   }
 
+  function filterMarker() {
+    renderMarker();
+  }
+
   document.getElementById('clusterToggle').addEventListener('change', function() {
     clusteringAktiv = this.checked;
-    initialisiereKarte();
+    renderMarker();
   });
 
-  document.getElementById('redThresh').addEventListener('change', initialisiereKarte);
-  document.getElementById('orangeThresh').addEventListener('change', initialisiereKarte);
+  document.getElementById('redThresh').addEventListener('change', renderMarker);
+  document.getElementById('orangeThresh').addEventListener('change', renderMarker);
 
   document.querySelectorAll('.netz-filter').forEach(cb => {
     cb.addEventListener('change', () => {
       const typ = cb.value;
       cb.checked ? aktuelleFilter.add(typ) : aktuelleFilter.delete(typ);
-      initialisiereKarte();
+      renderMarker();
     });
   });
 
