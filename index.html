@@ -149,10 +149,9 @@
     });
     const relevant = tt + tn;
     const anteil = relevant ? (tt / relevant) : 0;
-    if (anteil === 0) return "green";
-    if (anteil < redThresh && anteil >= orangeThresh) return "orange";
-    if (anteil >= redThresh) return "red";
-    return "gray";
+   if (anteil >= redThresh) return "red";
+if (anteil >= orangeThresh) return "orange";
+return "green";
   }
 
   async function initialisiereKarte() {
