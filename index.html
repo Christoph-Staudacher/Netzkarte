@@ -1,299 +1,169 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <title>Netztyp-Karte</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <meta charset="UTF-8" />
+  <title>Netzkarte</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <style>
-    html, body {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    #map { height: 100vh; width: 100%; }
-    #filter, #tools {
-      padding: 10px;
-      background: white;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    #map { height: 100vh; }
+    .filter-container {
       position: absolute;
       top: 10px;
       right: 10px;
       z-index: 1000;
-    }
-    #tools {
-      top: auto;
-      bottom: 10px;
-    }
-    #legend {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
       background: white;
       padding: 10px;
-      font-size: 14px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-      z-index: 1000;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
     }
-    #loader {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(255,255,255,0.9);
-      padding: 20px;
-      border-radius: 8px;
-      display: none;
-      z-index: 2000;
+    .popup-label {
+      font-weight: bold;
+      display: block;
+      margin-top: 5px;
     }
-    #clusterControl, #reloadControl {
-      margin-top: 10px;
-    }
-    #thresholds {
-      margin-top: 10px;
-    }
-    #thresholds input {
-      width: 50px;
+    select, textarea {
+      width: 100%;
+      margin-top: 5px;
     }
   </style>
 </head>
 <body>
-
-<div id="filter">
-  <label><input type="checkbox" class="netz-filter" value="TT" checked> TT-Netz</label><br>
-  <label><input type="checkbox" class="netz-filter" value="TN" checked> TN-Netz</label><br>
-  <label><input type="checkbox" class="netz-filter" value="Unbekannt" checked> Nicht vergeben</label>
-</div>
-
-<div id="tools">
-  <button onclick="filterMarker()">🔄 Karte aktualisieren</button>
-  <input type="text" id="orderSearch" placeholder="Ordernummer suchen">
-  <button onclick="exportCSV()">📁 CSV Export</button><br>
-  <div id="clusterControl">
-    <label><input type="checkbox" id="clusterToggle" checked> Clustering aktiv</label>
+  <div id="map"></div>
+  <div class="filter-container">
+    <label>Filter Netzform:</label>
+    <select id="filter-netzform" multiple>
+      <option value="TT" selected>TT</option>
+      <option value="TN" selected>TN</option>
+      <option value="Unbekannt" selected>Unbekannt</option>
+    </select>
+    <br/>
+    <label>Filter Netzform Bestätigt?</label>
+    <select id="filter-netzform-bestaetigt" multiple>
+      <option value="Ja" selected>Ja</option>
+      <option value="Nein" selected>Nein</option>
+      <option value="" selected>Leer</option>
+    </select>
   </div>
-  <div id="reloadControl">
-    <label><input type="checkbox" id="reloadToggle" checked> Automatisches Neuladen</label>
-  </div>
-</div>
 
-<div id="legend">
-  <strong>Legende:</strong><br>
-  🔴 TT > <input id="redThresh" type="number" min="0" max="100" value="90"> %<br>
-  🟠 TT > <input id="orangeThresh" type="number" min="0" max="100" value="1"> %<br>
-  🟢 TT = 0 %<br>
-  ⚪ Nicht vergeben
-</div>
-
-<div id="loader">🔄 Lade Daten...</div>
-
-<div id="map"></div>
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const map = L.map('map').setView([51.1657, 10.4515], 6);
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script>
+    const map = L.map('map').setView([51.3, 10.1], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap-Mitwirkende'
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const farben = { TT: "red", TN: "green", Unbekannt: "gray" };
-    const aktuelleFilter = new Set(["TT", "TN", "Unbekannt"]);
-    let clusteringAktiv = true;
-    let autoReloadAktiv = true;
-    const baseId = "appGh6rEXtCNMCrWh";
-    const tableName = "Netzkarten Daten";
-    const apiKey = "patlyiYzU6HAMUiY9.7cfef1ea6fc2a5cd9cc3acebf1347fd04ba1e1d7dd60e9acc7bb77c0caa72f78";
+    const markerCluster = L.markerClusterGroup();
+    map.addLayer(markerCluster);
 
-    let allMarker = [];
-    let markerCluster;
-    let datenArray = [];
+    const farben = {
+      "TT": "red",
+      "TN": "blue",
+      "Unbekannt": "gray"
+    };
 
-    async function fetchDaten() {
-      document.getElementById('loader').style.display = 'block';
-      let records = [];
-      let offset = null;
-      do {
-        const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?pageSize=100&view=Grid%20view&fields[]=PLZ&fields[]=LAT&fields[]=LONG&fields[]=Netzform%20Karte&fields[]=Ordernummer&fields[]=NB${offset ? `&offset=${offset}` : ''}`, {
-          headers: { Authorization: `Bearer ${apiKey}` }
-        });
-        const data = await res.json();
-        records = records.concat(data.records);
-        offset = data.offset;
-      } while (offset);
-      document.getElementById('loader').style.display = 'none';
-      return records.map(rec => {
-        const f = rec.fields;
-        return {
-          id: rec.id,
-          plz: f.PLZ,
-          netztyp: (f["Netzform Karte"] && f["Netzform Karte"].trim() !== "") ? f["Netzform Karte"].trim() : "Unbekannt",
-          ordernummer: f.Ordernummer || "-",
-          nb: f.NB || "-",
-          lat: f.LAT,
-          lng: f.LONG
-        };
-      }).filter(p => p.lat && p.lng);
-    }
+    const filterNetzform = document.getElementById("filter-netzform");
+    const filterNetzformBestaetigt = document.getElementById("filter-netzform-bestaetigt");
+    let daten = [];
 
-    function getClusterColor(childMarkers) {
-      const redThresh = parseFloat(document.getElementById('redThresh').value) / 100;
-      const orangeThresh = parseFloat(document.getElementById('orangeThresh').value) / 100;
-      let tt = 0, tn = 0;
-      childMarkers.forEach(m => {
-        if (m.options.netztyp === "TT") tt++;
-        else if (m.options.netztyp === "TN") tn++;
-      });
-      const relevant = tt + tn;
-      const anteil = relevant ? (tt / relevant) : 0;
-      if (anteil >= redThresh) return "red";
-      if (anteil >= orangeThresh) return "orange";
-      return "green";
-    }
-
-    async function initialisiereKarte() {
-      datenArray = await fetchDaten();
-      renderMarker();
+    function getSelectedValues(selectElement) {
+      return Array.from(selectElement.selectedOptions).map(opt => opt.value);
     }
 
     function renderMarker() {
-      if (markerCluster) map.removeLayer(markerCluster);
-      allMarker.forEach(m => map.removeLayer(m));
-      allMarker = [];
+      markerCluster.clearLayers();
+      const selectedNetzform = getSelectedValues(filterNetzform);
+      const selectedBestaetigt = getSelectedValues(filterNetzformBestaetigt);
 
-      const markerLayer = clusteringAktiv
-        ? L.markerClusterGroup({
-            iconCreateFunction: function(cluster) {
-              const count = cluster.getChildCount();
-              const childMarkers = cluster.getAllChildMarkers();
-              const color = getClusterColor(childMarkers);
-              return L.divIcon({
-                html: `<div style="background-color:${color}; border-radius:50%; padding:5px 10px; color:white;">${count}</div>`,
-                className: 'custom-cluster',
-                iconSize: L.point(40, 40)
-              });
-            }
-          }) : L.layerGroup();
+      daten.forEach(record => {
+        if (
+          selectedNetzform.includes(record.fields["Netzform Karte"]) &&
+          selectedBestaetigt.includes(record.fields["Netzform Bestätigt?"] || "")
+        ) {
+          const marker = L.circleMarker([record.fields.LAT, record.fields.LONG], {
+            radius: 8,
+            color: farben[record.fields["Netzform Karte"]] || "gray",
+            fillOpacity: 0.8
+          });
 
-      datenArray.forEach(daten => {
-        if (!aktuelleFilter.has(daten.netztyp)) return;
-        const color = farben[daten.netztyp] || "gray";
-        const marker = L.circleMarker([daten.lat, daten.lng], {
-          radius: 8,
-          color,
-          fillColor: color,
-          fillOpacity: 0.8,
-          netztyp: daten.netztyp
-        });
-        marker.bindPopup(createPopupContent(daten, marker));
-        markerLayer.addLayer(marker);
-        allMarker.push(marker);
+          const netzformSelect = `<select id="netzform-${record.id}">
+              <option value="TT" ${record.fields["Netzform Karte"] === "TT" ? "selected" : ""}>TT</option>
+              <option value="TN" ${record.fields["Netzform Karte"] === "TN" ? "selected" : ""}>TN</option>
+              <option value="Unbekannt" ${record.fields["Netzform Karte"] === "Unbekannt" ? "selected" : ""}>Unbekannt</option>
+            </select>`;
 
-        if (!clusteringAktiv) {
-          marker.addTo(map);
+          const bestaetigtSelect = `<select id="bestaetigt-${record.id}">
+              <option value="" ${!record.fields["Netzform Bestätigt?"] ? "selected" : ""}>Leer</option>
+              <option value="Ja" ${record.fields["Netzform Bestätigt?"] === "Ja" ? "selected" : ""}>Ja</option>
+              <option value="Nein" ${record.fields["Netzform Bestätigt?"] === "Nein" ? "selected" : ""}>Nein</option>
+            </select>`;
+
+          const kommentar = record.fields["Kommentar Netzformkarte"] || "";
+
+          const popupContent = `
+            <div>
+              <label class="popup-label">Netzform:</label>${netzformSelect}
+              <label class="popup-label">Netzform Bestätigt?</label>${bestaetigtSelect}
+              <label class="popup-label">Kommentar:</label>
+              <textarea id="kommentar-${record.id}" rows="3">${kommentar}</textarea>
+              <button onclick="saveChanges('${record.id}')">Speichern</button>
+            </div>
+          `;
+
+          marker.bindPopup(popupContent);
+          markerCluster.addLayer(marker);
         }
       });
-
-      markerCluster = markerLayer;
-      map.addLayer(markerCluster);
     }
 
-    function filterMarker() {
-      renderMarker();
-    }
+    filterNetzform.addEventListener("change", renderMarker);
+    filterNetzformBestaetigt.addEventListener("change", renderMarker);
+    function saveChanges(recordId) {
+      const newNetzform = document.getElementById(`netzform-${recordId}`).value;
+      const newKommentar = document.getElementById(`kommentar-${recordId}`).value;
+      const newBestaetigt = document.getElementById(`bestaetigt-${recordId}`).value;
 
-    document.getElementById('clusterToggle').addEventListener('change', function() {
-      clusteringAktiv = this.checked;
-      renderMarker();
-    });
-
-    document.getElementById('reloadToggle').addEventListener('change', function() {
-      autoReloadAktiv = this.checked;
-    });
-
-    document.getElementById('redThresh').addEventListener('change', renderMarker);
-    document.getElementById('orangeThresh').addEventListener('change', renderMarker);
-
-    document.querySelectorAll('.netz-filter').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const typ = cb.value;
-        cb.checked ? aktuelleFilter.add(typ) : aktuelleFilter.delete(typ);
-        renderMarker();
-      });
-    });
-
-    function createPopupContent(daten, marker) {
-      const popup = document.createElement('div');
-      popup.innerHTML = `
-        <strong>PLZ: ${daten.plz}</strong><br>
-        Ordernummer: ${daten.ordernummer}<br>
-        Netzbetreiber: ${daten.nb}<br>
-        <label>Netzform:
-          <select>
-            <option value="TT">TT-Netz</option>
-            <option value="TN">TN-Netz</option>
-            <option value="Unbekannt">Nicht vergeben</option>
-          </select>
-        </label><br>
-        <label>Kommentar:<br><textarea rows="2" data-id="${daten.id}"></textarea></label>
-      `;
-      const select = popup.querySelector('select');
-      select.value = daten.netztyp;
-      select.addEventListener('change', async (e) => {
-        const neuerTyp = e.target.value;
-        const neueFarbe = farben[neuerTyp] || "gray";
-        marker.setStyle({ color: neueFarbe, fillColor: neueFarbe });
-        marker.options.netztyp = neuerTyp;
-        await saveToAirtable(daten.id, neuerTyp);
-      });
-      return popup;
-    }
-
-    async function saveToAirtable(recordId, neuerNetztyp) {
-      const res = await fetch(`https://api.airtable.com/v0/${baseId}/${tableName}/${recordId}`, {
+      fetch(`https://api.airtable.com/v0/appmYoQ1CKJtwOPxK/Zusammenfassung%20Angaben%20Craft%20OS/${recordId}`, {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": "Bearer keybg6Se9Z8Prsa0F"
         },
-        body: JSON.stringify({ fields: { "Netzform Karte": neuerNetztyp } })
-      });
-      if (!res.ok) console.error("Fehler beim Speichern in Airtable", await res.text());
-    }
-
-    const searchInput = document.getElementById('orderSearch');
-    if (searchInput) {
-      searchInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-          const val = this.value.trim();
-          const marker = allMarker.find(m => m.getPopup().getContent().includes(`Ordernummer: ${val}`));
-          if (marker) {
-            map.setView(marker.getLatLng(), 12);
-            marker.openPopup();
+        body: JSON.stringify({
+          fields: {
+            "Netzform Karte": newNetzform,
+            "Kommentar Netzformkarte": newKommentar,
+            "Netzform Bestätigt?": newBestaetigt
           }
-        }
+        })
+      })
+      .then(response => {
+        if (!response.ok) throw new Error("Update fehlgeschlagen.");
+        return response.json();
+      })
+      .then(updated => {
+        const index = daten.findIndex(d => d.id === recordId);
+        if (index > -1) daten[index] = updated;
+        renderMarker();
+      })
+      .catch(error => {
+        alert("Fehler beim Speichern: " + error.message);
       });
     }
 
-    function exportCSV() {
-      let csv = "PLZ,Ordernummer,Netzbetreiber,Netzform\n";
-      datenArray.forEach(d => {
-        if (aktuelleFilter.has(d.netztyp)) {
-          csv += `${d.plz},${d.ordernummer},${d.nb},${d.netztyp}\n`;
-        }
-      });
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'netzkarte_export.csv';
-      a.click();
-    }
-
-    initialisiereKarte();
-    setInterval(() => { if (autoReloadAktiv) initialisiereKarte(); }, 120000);
-  });
-</script>
+    fetch("https://api.airtable.com/v0/appmYoQ1CKJtwOPxK/Zusammenfassung%20Angaben%20Craft%20OS?maxRecords=5000&view=Grid%20view", {
+      headers: {
+        Authorization: "Bearer keybg6Se9Z8Prsa0F"
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      daten = data.records;
+      renderMarker();
+    });
+  </script>
 </body>
 </html>
